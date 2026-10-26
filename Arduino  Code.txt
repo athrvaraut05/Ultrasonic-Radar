@@ -1,0 +1,83 @@
+
+#include <Servo.h>
+
+// Pin configuration
+const int trigPin = 6;
+const int echoPin = 7;
+const int servoPin = 8;
+
+// Servo scanning angles
+const int minAngle = 15;
+const int maxAngle = 165;
+
+// Echo timeout in microseconds
+const unsigned long echoTimeout = 30000UL;
+
+Servo myServo;
+
+long duration;
+int distance;
+
+void setup() {
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  digitalWrite(trigPin, LOW);
+
+  Serial.begin(9600);
+
+  myServo.attach(servoPin);
+}
+
+void loop() {
+  // Sweep from 15 to 165 degrees
+  for (int angle = minAngle; angle <= maxAngle; angle++) {
+    myServo.write(angle);
+    delay(30);
+
+    distance = calculateDistance();
+
+    // Send angle and distance to Serial
+    Serial.print(angle);
+    Serial.print(",");
+    Serial.print(distance);
+    Serial.print(".");
+  }
+
+  // Sweep back from 165 to 15 degrees
+  for (int angle = maxAngle; angle >= minAngle; angle--) {
+    myServo.write(angle);
+    delay(30);
+
+    distance = calculateDistance();
+
+    Serial.print(angle);
+    Serial.print(",");
+    Serial.print(distance);
+    Serial.print(".");
+  }
+}
+
+int calculateDistance() {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+
+  digitalWrite(trigPin, LOW);
+
+  // Read echo with timeout
+  duration = pulseIn(echoPin, HIGH, echoTimeout);
+
+  // Return 0 if no echo is detected
+  if (duration == 0) {
+    return 0;
+  }
+
+  // Calculate distance in centimetres
+  int measuredDistance =
+      (int)(duration * 0.0343 / 2.0);
+
+  return measuredDistance;
+}

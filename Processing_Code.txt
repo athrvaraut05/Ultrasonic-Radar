@@ -1,0 +1,168 @@
+// processing code //
+// PendTech radar - corrected version //
+import processing.serial.*; // library for serial communication
+
+Serial myPort; // serial object
+
+// ---------- settings ----------
+final String PORT_NAME = "COM4"; // change to match the list printed in the console
+final int MAX_CM = 40;           // maximum range shown on the radar
+
+// ---------- variables ----------
+// volatile: serialEvent() runs on a different thread than draw()
+volatile int iAngle = 0;
+volatile int iDistance = 0;
+
+String noObject = "Out of Range";
+float pixsDistance;
+float maxR;     // radius of the outer ring in pixels
+float pxPerCm;  // pixels per centimetre = maxR / MAX_CM
+
+void setup() {
+  size(1300, 780); // ***CHANGE THIS TO YOUR SCREEN RESOLUTION***
+  smooth();
+
+  maxR = (width - width*0.0625) / 2;
+  pxPerCm = maxR / MAX_CM;
+
+  println(Serial.list()); // shows which ports exist
+  try {
+    myPort = new Serial(this, PORT_NAME, 9600); // starts the serial communication
+    myPort.bufferUntil('.'); // reads data up to the character '.'  (format: angle,distance.)
+    myPort.clear();          // drop any half-received packet
+  } catch (Exception e) {
+    println("Could not open " + PORT_NAME + ". Check the port name and that the");
+    println("Arduino Serial Monitor is closed (it blocks the port).");
+    exit();
+  }
+}
+
+void draw() {
+  // simulating motion blur and slow fade of the moving line
+  noStroke();
+  fill(0, 4);
+  rect(0, 0, width, height - height*0.065);
+
+  fill(98, 245, 31); // green color
+  // calls the functions for drawing the radar
+  drawRadar();
+  drawLine();
+  drawObject();
+  drawText();
+}
+
+// true when the sensor reading is a valid object inside the radar range
+boolean inRange() {
+  return iDistance > 0 && iDistance <= MAX_CM;
+}
+
+void serialEvent(Serial p) { // called when a full packet ending in '.' has arrived
+  String raw = p.readStringUntil('.');
+  if (raw == null) return; // nothing complete yet
+  raw = raw.trim();
+  if (raw.endsWith(".")) raw = raw.substring(0, raw.length() - 1);
+
+  int comma = raw.indexOf(',');
+  if (comma <= 0 || comma >= raw.length() - 1) return; // malformed packet
+
+  try {
+    int a = Integer.parseInt(raw.substring(0, comma).trim());
+    int d = Integer.parseInt(raw.substring(comma + 1).trim());
+    iAngle = constrain(a, 0, 180);
+    iDistance = d;
+  } catch (NumberFormatException e) {
+    // ignore a bad packet and wait for the next one
+  }
+}
+
+void drawRadar() {
+  pushMatrix();
+  translate(width/2, height - height*0.074); // moves the starting coordinates to new location
+  noFill();
+  strokeWeight(2);
+  stroke(98, 245, 31);
+
+  // draws the arc lines: rings at 10, 20, 30 and 40 cm
+  for (int i = 1; i <= 4; i++) {
+    float d = 2 * maxR * i / 4.0;
+    arc(0, 0, d, d, PI, TWO_PI);
+  }
+
+  // draws the angle lines
+  line(-maxR, 0, maxR, 0); // baseline
+  for (int a = 30; a <= 150; a += 30) {
+    line(0, 0, maxR*cos(radians(a)), -maxR*sin(radians(a)));
+  }
+  popMatrix();
+}
+
+void drawObject() {
+  pushMatrix();
+  translate(width/2, height - height*0.074); // moves the starting coordinates to new location
+  strokeWeight(9);
+  stroke(255, 10, 10); // red color
+  pixsDistance = iDistance * pxPerCm; // converts the distance from cm to pixels
+  // limiting the range to MAX_CM
+  if (inRange()) {
+    // draws the object according to the angle and the distance
+    line(pixsDistance*cos(radians(iAngle)), -pixsDistance*sin(radians(iAngle)),
+         maxR*cos(radians(iAngle)),         -maxR*sin(radians(iAngle)));
+  }
+  popMatrix();
+}
+
+void drawLine() {
+  pushMatrix();
+  strokeWeight(9);
+  stroke(30, 250, 60);
+  translate(width/2, height - height*0.074); // moves the starting coordinates to new location
+  line(0, 0, maxR*cos(radians(iAngle)), -maxR*sin(radians(iAngle))); // draws the line according to the angle
+  popMatrix();
+}
+
+void drawText() { // draws the texts on the screen
+  pushMatrix();
+  noObject = inRange() ? "In Range" : "Out of Range";
+
+  // black bar at the bottom
+  fill(0, 0, 0);
+  noStroke();
+  rect(0, height - height*0.0648, width, height*0.0648);
+
+  fill(98, 245, 31);
+
+  // status text (top-left)
+  textSize(25);
+  textAlign(LEFT);
+  text(noObject, 20, 40);
+
+  // ring labels, placed from the same radius as the rings
+  textAlign(RIGHT);
+  for (int i = 1; i <= 4; i++) {
+    text(10*i + "cm", width/2 + maxR*i/4.0 - 6, height - height*0.0833);
+  }
+  textAlign(LEFT);
+
+  // bottom bar text
+  textSize(40);
+  text("PendTech", width - width*0.875, height - height*0.0277);
+  text("Angle: " + iAngle + " °", width - width*0.48, height - height*0.0277);
+  text("Distance: ", width - width*0.26, height - height*0.0277);
+  if (inRange()) {
+    float numX = width - width*0.26 + textWidth("Distance: ");
+    text(iDistance + " cm", numX, height - height*0.0277);
+  }
+
+  // angle labels, placed just outside the outer ring and rotated to follow it
+  textSize(25);
+  fill(98, 245, 60);
+  float originY = height - height*0.074;
+  for (int a = 30; a <= 150; a += 30) {
+    pushMatrix();
+    translate(width/2 + (maxR + 45)*cos(radians(a)), originY - (maxR + 45)*sin(radians(a)));
+    rotate(radians(90 - a));
+    text(a + "°", 0, 0);
+    popMatrix();
+  }
+  popMatrix();
+}
